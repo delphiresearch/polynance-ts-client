@@ -26,11 +26,7 @@ import { PolynanceClient } from 'polynance-ts-client';
 const client = new PolynanceClient();
 
 // カスタム設定でクライアントを初期化
-const customClient = new PolynanceClient({
-  apiBaseUrl: 'https://api.example.com',
-  sseBaseUrl: 'https://sse.example.com',
-  redisUrl: 'redis://username:password@host:port' // サーバーサイドのみ
-});
+const customClient = new PolynanceClient();
 ```
 
 ### イベント情報の取得
