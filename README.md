@@ -135,15 +135,3 @@ async function cleanup() {
   console.log('Client closed');
 }
 ```
-
-## 環境変数
-
-以下の環境変数を設定することで、クライアントの動作をカスタマイズできます：
-
-- `POLYNANCE_API_URL`: APIのベースURL（デフォルト: http://localhost:8090）
-- `POLYNANCE_SSE_URL`: SSEサーバーのベースURL（デフォルト: http://localhost:3030）
-- `UPSTASH_REDIS_URL`: Redisの接続URL（サーバーサイド環境のみ）
-
-## ライセンス
-
-ISC
