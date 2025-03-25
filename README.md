@@ -1,137 +1,104 @@
-# Polynance TypeScript Client
+# Polynance SDK
 
-予測市場のアグリゲータSDK。polymarket、limitless、truemarketの3つのプロトコルをサポートする強力なTypeScriptレイヤーです。
+The Polynance SDK is an aggregation layer designed for prediction markets, abstracting the complexity and differences between various prediction market protocols. It offers a unified interface for interacting with multiple prediction market platforms seamlessly.
 
-## 特徴
+## Supported Protocols
 
-- TypeScriptで書かれた型安全なAPI
-- 複数の予測市場プロトコル（polymarket、limitless、truemarket）をサポート
-- RESTful APIとServer-Sent Events（SSE）の両方をサポート
-- ブラウザとNode.js環境の両方で動作
+- Polymarket (`polymarket`)
+- Limitless (`limitless`)
+- TrueMarket (`truemarket`)
 
-## インストール
+## Features
+
+- Retrieve detailed event and market information
+- Obtain ongoing prediction market events
+- Access user comments related to specific events
+- Fetch real-time order book and trade data
+- Subscribe to real-time updates via Server-Sent Events (SSE)
+- Generate candlestick data from market transactions
+
+## Installation
 
 ```bash
-npm install polynance-ts-client
+npm install polynance_ts_client
 ```
 
-## 使用方法
+## Quick Start
 
-### クライアントの初期化
+### Initialization
 
 ```typescript
-import { PolynanceClient } from 'polynance-ts-client';
+import { PolynanceClient } from 'polynance_ts_client';
 
-// デフォルト設定でクライアントを初期化
 const client = new PolynanceClient();
-
-// カスタム設定でクライアントを初期化
-const customClient = new PolynanceClient();
 ```
 
-### イベント情報の取得
+### Fetching Event Data
 
 ```typescript
-// 特定のイベント情報を取得
-async function getEventInfo() {
-  try {
-    const event = await client.getEvent('polymarket', '12345');
-    console.log('Event:', event);
-  } catch (error) {
-    console.error('Error fetching event:', error);
-  }
-}
-
-// 進行中のイベント一覧を取得
-async function getOngoingEvents() {
-  try {
-    const events = await client.getOngoingEvents('polymarket', 1, 50);
-    console.log('Events:', events);
-  } catch (error) {
-    console.error('Error fetching events:', error);
-  }
-}
+const event = await client.getEvent('limitless', 'eventId');
+console.log(event);
 ```
 
-### マーケット情報の取得
+### Getting Market Information
 
 ```typescript
-// 特定のマーケット情報を取得
-async function getMarketInfo() {
-  try {
-    const market = await client.getMarket('polymarket', '67890');
-    console.log('Market:', market);
-  } catch (error) {
-    console.error('Error fetching market:', error);
-  }
-}
-
-// オーダーブック情報を取得
-async function getOrderbookInfo() {
-  try {
-    const orderbook = await client.getOrderbook('polymarket', '67890');
-    console.log('Orderbook:', orderbook);
-  } catch (error) {
-    console.error('Error fetching orderbook:', error);
-  }
-}
+const market = await client.getMarket('polymarket', 'marketId');
+console.log(market);
 ```
 
-### コメント情報の取得
+### Subscribing to Real-time Market Updates (SSE)
 
 ```typescript
-// イベントのコメント一覧を取得
-async function getEventComments() {
-  try {
-    const comments = await client.getEventComments('polymarket', '12345');
-    console.log('Comments:', comments);
-  } catch (error) {
-    console.error('Error fetching comments:', error);
-  }
-}
+const subscription = client.subscribeFillEvents('truemarket', 'marketId', {
+  onOpen: () => console.log('Connected to SSE'),
+  onMessage: (data) => console.log('Received data:', data),
+  onError: (error) => console.error('Error:', error),
+});
+
+// To close subscription:
+subscription.close();
 ```
 
-### 取引イベントの購読（ブラウザ環境）
+## Generating Candlestick Data
 
 ```typescript
-// 取引イベントの購読
-function subscribeTrades() {
-  const eventSource = client.subscribeFillEvents('polymarket', '67890', (data) => {
-    console.log('New trade:', data);
-    // 取引データを処理
-  });
-  
-  // 購読の停止
-  setTimeout(() => {
-    eventSource.close();
-  }, 60000); // 60秒後に停止
-}
+import { generateCandlestickData } from 'polynance-sdk';
+
+const candles = generateCandlestickData(fillEvents, intervalMillis, fromTime, toTime);
+console.log(candles);
 ```
 
-### 取引イベントの発行（サーバーサイド環境）
+## API Reference
 
-```typescript
-// 取引イベントの発行
-async function publishTradeEvent() {
-  try {
-    await client.publishFillEvent('polymarket', '67890', {
-      price: 0.75,
-      volumeBase: 100,
-      timestamp: Date.now()
-    });
-    console.log('Trade event published');
-  } catch (error) {
-    console.error('Error publishing trade event:', error);
-  }
-}
-```
+### Methods
 
-### クライアントの終了
+- `getEvent(protocol, eventId)` - Fetch detailed information about a specific event.
+- `getMarket(protocol, marketId)` - Retrieve detailed market data.
+- `getOngoingEvents(protocol, page, limit)` - List ongoing prediction market events.
+- `getEventComments(protocol, eventId)` - Get user comments for a specific event.
+- `getOrderbook(protocol, marketId)` - Retrieve the order book for a market.
+- `getOrderBookFilledEvents(protocol, marketId)` - Obtain historical fill events for order books.
+- `subscribeFillEvents(protocol, id, handlers)` - Subscribe to real-time updates using SSE.
 
-```typescript
-// クライアントの終了処理（サーバーサイド環境）
-async function cleanup() {
-  await client.close();
-  console.log('Client closed');
-}
-```
+### Types
+
+- `FillEventData`
+- `PredictionMarketEvent`
+- `PredictionMarket`
+- `PredictionMarketComment`
+- `OrderBookSummary`
+- `Candle`
+
+## Error Handling
+
+All methods throw errors on failure. Ensure to handle exceptions appropriately in your implementation.
+
+## Contributions
+
+We welcome contributions! Please open an issue or submit a pull request.
+
+## License
+
+This SDK is licensed under the MIT License.
+
