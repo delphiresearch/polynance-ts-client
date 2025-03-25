@@ -20,7 +20,7 @@ The Polynance SDK is an aggregation layer designed for prediction markets, abstr
 ## Installation
 
 ```bash
-npm install polynance_ts_client
+npm install polynance_client
 ```
 
 ## Quick Start
@@ -28,7 +28,7 @@ npm install polynance_ts_client
 ### Initialization
 
 ```typescript
-import { PolynanceClient } from 'polynance_ts_client';
+import { PolynanceClient } from 'polynance_client';
 
 const client = new PolynanceClient();
 ```
