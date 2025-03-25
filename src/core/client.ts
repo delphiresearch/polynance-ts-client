@@ -56,8 +56,8 @@ export class PolynanceClient {
   private sseBaseUrl: string;
 
   constructor(options?: PolynanceClientOptions) {
-    const apiBaseUrl = options?.apiBaseUrl || 'http://43.206.239.96:9000';
-    this.sseBaseUrl = options?.sseBaseUrl ||  'http://43.206.239.96:9000';
+    const apiBaseUrl = options?.apiBaseUrl || 'http://57.180.216.102:9000';
+    this.sseBaseUrl = options?.sseBaseUrl ||  'http://57.180.216.102:9000';
 
     this.apiClient = axios.create({
       baseURL: apiBaseUrl,
