@@ -68,7 +68,7 @@ export interface PredictionMarketComment {
   bio?: string;
   baseAddress?: string;
   profileImage?: string;
-  positions?: Record<string, any>[];
+  positions?: {position: string, positionSize: string, marketId: string}[];
   createdAt?: string;
   reportCount?: number;
   reactionCount?: number;
