@@ -5,18 +5,18 @@
  */
 
 // クライアントクラスのエクスポート
-export { PolynanceClient, PolynanceClientOptions } from './core/client';
+export { PolynanceClient, PolynanceClientOptions,generateCandlestickData, FillEventSSEHandlers, FillEventSubscription } from './core/client';
 
 // 型定義のエクスポート
 export {
   Protocol,
   PredictionMarketEvent,
-  SimpleMarket,
+  PredictionMarket,
   PredictionMarketComment,
   OrderBookSummary,
   OrderBookLevel,
   FillEventData
-} from './types/common';
+} from './core/types';
 
 /**
  * SDKの使用例:

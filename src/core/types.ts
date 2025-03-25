@@ -13,6 +13,7 @@ export type Protocol = 'polymarket' | 'limitless' | 'truemarket';
 export interface PredictionMarketEvent {
   id: string;
   protocol: Protocol;
+  region?: string
   slug?: string;
   title?: string;
   description?: string;
@@ -24,26 +25,35 @@ export interface PredictionMarketEvent {
   active?: boolean;
   liquidity?: number;
   volume?: number;
-  markets?: SimpleMarket[];
+  markets?: PredictionMarket[];
 }
+
+
 
 /**
  * 予測市場のマーケット情報
  */
-export interface SimpleMarket {
+export interface PredictionMarket {
   id: number;
+  image: string;
   question: string;
+  slug: string;
   end: string;
+  icon: string;
+  name: string;
   description: string;
   active?: boolean;
   funded: boolean;
   rewardsMinSize?: number;
   rewardsMaxSpread?: number;
   spread: number;
-  outcomes: string[] | string;
-  outcome_prices: string[] | string;
-  clob_token_ids?: string[] | string;
-  position_token_ids?: string[] | string;
+  position_tokens: PositionToken[]
+}
+
+export interface PositionToken {
+  token_id: string,
+  name: string,
+  price: string
 }
 
 /**
@@ -69,9 +79,12 @@ export interface PredictionMarketComment {
  * オーダーブックのサマリー情報
  */
 export interface OrderBookSummary {
+  market?: string;
+  asset_id?: string;
+  timestamp: string | number;
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
-  timestamp: number;
+  hash?: string;
 }
 
 /**
@@ -90,3 +103,5 @@ export interface FillEventData {
   volumeBase: number;
   timestamp: number;
 }
+
+
