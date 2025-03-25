@@ -1,9 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
-import Redis from 'ioredis';
 import { Protocol, PredictionMarketEvent, PredictionMarketComment, OrderBookSummary, FillEventData, PredictionMarket } from './types';
-import dotenv from 'dotenv';
 
-dotenv.config();
 
 export interface PolynanceClientOptions {
   apiBaseUrl?: string;
@@ -56,12 +53,11 @@ export interface FillEventSubscription {
  */
 export class PolynanceClient {
   private apiClient: AxiosInstance;
-  private redisClient: Redis | null = null;
   private sseBaseUrl: string;
 
   constructor(options?: PolynanceClientOptions) {
-    const apiBaseUrl = options?.apiBaseUrl || process.env.POLYNANCE_API_URL || 'http://43.206.239.96:9000';
-    this.sseBaseUrl = options?.sseBaseUrl || process.env.POLYNANCE_SSE_URL || 'http://43.206.239.96:9000';
+    const apiBaseUrl = options?.apiBaseUrl || 'http://43.206.239.96:9000';
+    this.sseBaseUrl = options?.sseBaseUrl ||  'http://43.206.239.96:9000';
 
     this.apiClient = axios.create({
       baseURL: apiBaseUrl,
@@ -221,15 +217,7 @@ export class PolynanceClient {
     };
   }
 
-  /**
-   * クライアントの終了処理
-   */
-  async close(): Promise<void> {
-    if (this.redisClient) {
-      await this.redisClient.quit();
-      this.redisClient = null;
-    }
-  }
+
 
   /**
    * エラーハンドリング
@@ -244,22 +232,14 @@ export class PolynanceClient {
 }
 
 export interface Candle {
-  time: number       // UNIX タイムスタンプ（秒単位）
+  time: number       // UNIX
   open: number
   high: number
   low: number
   close: number
   volume: number
 }
-/**
- * 指定期間・指定のローソク足間隔で FillEventData を集計し、ローソク足データを返す関数
- *
- * @param fillEvents 集計元となる FillEventData の配列
- * @param intervalMillis ローソク足一本あたりの間隔（ミリ秒）
- * @param fromTime 取得を開始する時刻（ミリ秒単位）
- * @param toTime 取得を終了する時刻（ミリ秒単位）
- * @returns TradingView などに渡すローソク足データ（time は秒単位）
- */
+
 export function generateCandlestickData(
   fillEvents: FillEventData[],
   intervalMillis: number,
