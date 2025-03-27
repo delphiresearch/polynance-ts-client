@@ -143,10 +143,19 @@ export class PolynanceClient {
     }
   }
 
-  /**
-   * 過去の約定(Fill)イベント一覧を取得
-   */
-  async getOrderBookFilledEvents(protocol: Protocol, marketId: string): Promise<FillEventData[]> {
+/**
+ * Retrieves the filled order events for position tokens in a market for the last month.
+ * Returns price and timestamp data for each execution in the orderbook.
+ * 
+ * The response is a 2D array where the index corresponds to the position tokens
+ * in the same order as they appear in the market response's position_tokens array.
+ * For binary options, index 0 corresponds to "Yes" tokens.
+ * 
+ * @param protocol - The protocol identifier
+ * @param marketId - The market identifier
+ * @returns A 2D array of fill event data, organized by position token index
+ */
+  async getOrderBookFilledEvents(protocol: Protocol, marketId: string): Promise<FillEventData[][]> {
     try {
       const response = await this.apiClient.get(`/v1/markets/${marketId}/orderbook/filledevents`, {
         params: { protocol },
