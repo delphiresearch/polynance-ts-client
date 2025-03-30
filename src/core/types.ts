@@ -13,41 +13,41 @@ export type Protocol = 'polymarket' | 'limitless' | 'truemarket';
 export interface PredictionMarketEvent {
   id: string;
   protocol: Protocol;
-  region?: string
-  slug?: string;
-  title?: string;
-  description?: string;
-  startDate?: string;
-  creationDate?: string;
-  endDate?: string;
-  image?: string;
-  icon?: string;
-  active?: boolean;
+  region: string
+  slug: string;
+  title: string;
+  description: string;
+  startDate: string;
+  creationDate: string;
+  endDate: string;
+  image: string;
+  icon: string;
+  active: boolean;
   liquidity?: number;
   volume?: number;
-  markets?: PredictionMarket[];
+  markets: PredictionMarket[];
 }
-
 
 
 /**
  * 予測市場のマーケット情報
  */
 export interface PredictionMarket {
-  id: number;
-  image: string;
-  question: string;
-  slug: string;
-  end: string;
-  icon: string;
+  id: number | string;
   name: string;
+  question: string;
+  end: string;
   description: string;
-  active?: boolean;
+  image: string;
+  slug?: string;
+  icon: string
+  active: boolean;
   funded: boolean;
   rewardsMinSize?: number;
   rewardsMaxSpread?: number;
-  spread: number;
-  position_tokens: PositionToken[]
+  spread?: number;
+  position_tokens: PositionToken[],
+  groupItemTitle: string;
 }
 
 export interface PositionToken {
@@ -61,30 +61,30 @@ export interface PositionToken {
  */
 export interface PredictionMarketComment {
   id: string;
-  parent_comment_id?: string;
-  name?: string;
-  pseudonym?: string;
-  displayUsernamePublic?: boolean;
-  bio?: string;
-  baseAddress?: string;
-  profileImage?: string;
-  positions?: {position: string, positionSize: string, marketId: string}[];
-  createdAt?: string;
-  reportCount?: number;
-  reactionCount?: number;
-  content?: string;
+  parent_comment_id: string;
+  name: string;
+  pseudonym: string;
+  displayUsernamePublic: boolean;
+  bio: string;
+  baseAddress: string;
+  profileImage: string;
+  positions: {position: string, positionSize: string, marketId: string}[];
+  createdAt: string;
+  reportCount: number;
+  reactionCount: number;
+  content: string;
 }
 
 /**
  * オーダーブックのサマリー情報
  */
 export interface OrderBookSummary {
-  market?: string;
-  asset_id?: string;
+  market: string;
+  asset_id: string;
   timestamp: string | number;
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
-  hash?: string;
+  hash: string;
 }
 
 /**
@@ -95,13 +95,11 @@ export interface OrderBookLevel {
   size: number;
 }
 
-/**
- * 取引情報
- */
-export interface FillEventData {
-  price: number;
-  volumeBase: number;
-  timestamp: number;
-}
 
+// src/shared/types.ts
+export interface FillEventData {
+  price: number
+  volumeBase: number
+  timestamp: number
+}
 
