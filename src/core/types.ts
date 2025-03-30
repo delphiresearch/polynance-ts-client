@@ -33,7 +33,7 @@ export interface PredictionMarketEvent {
  * 予測市場のマーケット情報
  */
 export interface PredictionMarket {
-  id: number | string;
+  id: number;
   name: string;
   question: string;
   end: string;
