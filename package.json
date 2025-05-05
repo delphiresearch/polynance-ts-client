@@ -36,6 +36,7 @@
   "author": "delphi_research",
   "license": "ISC",
   "dependencies": {
+    "@polymarket/clob-client": "^4.15.0",
     "axios": "^1.8.4"
   },
   "devDependencies": {

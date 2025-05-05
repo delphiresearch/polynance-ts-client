@@ -1,5 +1,8 @@
 // src/core/client.ts
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { Wallet } from "@ethersproject/wallet";
+import { JsonRpcSigner } from "@ethersproject/providers";
+import { ApiKeyCreds, Chain, ClobClient, getContractConfig } from '@polymarket/clob-client';
 import { PolynanceApiError, PolynanceErrorCode } from './panic'; // Import from new error file
 import {
     PredictionProvider,
@@ -124,6 +127,7 @@ export interface Candle {
 export class PolynanceClient {
     private apiClient: AxiosInstance;
     private sseBaseUrl: string;
+    public clobClient?: ClobClient;
 
     /**
      * Creates an instance of the PolynanceClient.
@@ -146,6 +150,18 @@ export class PolynanceClient {
         // this.apiClient.interceptors.response.use(response => response, error => {
         //     return Promise.reject(this.handleError(error, 'AxiosInterceptor', { url: error.config?.url }));
         // });
+    }
+
+    public async initPolymarketClobClient(wallet: JsonRpcSigner|Wallet) {
+        const tmp = new ClobClient("https://clob.polymarket.com/", Chain.POLYGON, wallet)
+        const cred = await tmp.createOrDeriveApiKey()
+        this.clobClient = new ClobClient(
+            "https://clob.polymarket.com/", 
+            Chain.POLYGON, 
+            wallet,
+            cred
+        )
+        return this.clobClient;
     }
 
     /**
