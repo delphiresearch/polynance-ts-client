@@ -11,7 +11,9 @@ import {
     OrderBookSummary,
     TradeRecord,
     Exchange,
-    SearchFilter
+    SearchFilter,
+    Trader,
+    TraderPosition
 } from './types';
 
 /**
@@ -415,6 +417,45 @@ export class PolynanceClient {
         }
     }
 
+    async getTrader(protocol: PredictionProvider,traderAddress: string): Promise<Trader> {
+        const methodName = 'getTrader';
+        const context = { protocol, traderAddress: traderAddress ? '***' : traderAddress }; // Mask potentially long address
+        if (!traderAddress) {
+            throw new PolynanceApiError("Missing required parameter 'traderAddress'.", PolynanceErrorCode.INVALID_PARAMETER, { methodName, context });
+        }
+        if (!protocol) {
+            throw new PolynanceApiError("Missing required parameter 'protocol'.", PolynanceErrorCode.INVALID_PARAMETER, { methodName, context });
+        }
+        try {
+            const response = await this.apiClient.get<Trader>(`/v1/trader/${traderAddress}`,{
+                params: { protocol },
+            });
+            return response.data;
+        } catch (error) {
+            throw this.handleError(error, methodName, context);
+        }
+    }
+
+    async traderPositions(protocol: PredictionProvider,traderAddress: string): Promise<TraderPosition[]> {
+        const methodName = 'traderPositions';
+        const context = { protocol, traderAddress: traderAddress ? '***' : traderAddress }; // Mask potentially long address
+        if (!traderAddress) {
+            throw new PolynanceApiError("Missing required parameter 'traderAddress'.", PolynanceErrorCode.INVALID_PARAMETER, { methodName, context });
+        }
+        if (!protocol) {
+            throw new PolynanceApiError("Missing required parameter 'protocol'.", PolynanceErrorCode.INVALID_PARAMETER, { methodName, context });
+        }
+        try {
+            const response = await this.apiClient.get<TraderPosition[]>(`/v1/trader/${traderAddress}/positions`,{
+                params: { protocol },
+            });
+            return response.data;
+        } catch (error) {
+            throw this.handleError(error, methodName, context);
+        }
+    }
+
+
    /**
     * Retrieves a list of all available market slugs across all prediction providers.
     * Supports pagination. Slugs are URL-friendly identifiers for markets.
@@ -498,7 +539,9 @@ export class PolynanceClient {
         } catch (error) {
             throw this.handleError(error, methodName, context);
         }
+    
     }
+
 
 
     /**

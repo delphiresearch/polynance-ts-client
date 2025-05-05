@@ -173,3 +173,71 @@ export interface TradeRecord {
     /** Unix timestamp (in seconds) when the trade occurred. */
     timestamp: number;
 }
+
+
+export interface TraderPosition {
+    conditionId?: string;
+    marketSlug?: string;
+    outcome: string;
+    outcomeIndex?: number;
+    size: number;
+    averagePrice?: number;
+    currentPrice: number;
+    currentValue: number;
+    initialValue: number;
+    cashPnl?: number;
+    percentPnl?: number;
+    icon: string;
+    endsOn: string; // ISO‑8601
+  }
+  
+  export interface TraderActivity {
+    txHash?: string;
+    timestamp: number; // epoch seconds
+    marketSlug?: string;
+    side?: "BUY" | "SELL";
+    outcome: string;
+    price: number;
+    size: number;
+    usdcSize: number;
+    type?: string;
+  }
+  
+  export interface TraderStats {
+    portfolioValue: number | null;
+    cumulativeVolume: number | null;
+    cumulativeProfit: number | null;
+    totalTrades: number | null;
+    balanceInProtocol?: number;
+  }
+
+
+export interface TraderBasic {
+    tradingWallet: string;
+    proxyOwner: string | null;
+    name: string;
+    pseudonym: string;
+    bio: string;
+    avatar: string;
+    createdAt: string; // ISO‑8601
+  }
+  
+  
+  export interface Trader {
+    user: TraderBasic;
+    stats: TraderStats;
+  }
+  
+  export interface LedgerEntry {
+    blockNumber:   number;
+    logIndex:      number;
+    txHash:        string;
+    eventType:     "PositionSplit" | "PositionsMerge" | "PayoutRedemption";
+    trader:        string;
+    conditionId:   string;
+    indexSet:      number[];
+    amount:        string;   // raw per-outcome token qty or payout for redemption
+    tokenQty:      string;   // same as `amount` or indexSet.length for redemption
+    collateralFlow:string;   // signed USDC flow
+  }
+  
