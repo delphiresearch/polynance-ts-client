@@ -1,8 +1,10 @@
 // src/core/client.ts
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { Wallet } from "@ethersproject/wallet";
-import { JsonRpcSigner } from "@ethersproject/providers";
-import { ApiKeyCreds, Chain, ClobClient, getContractConfig } from '@polymarket/clob-client';
+import { JsonRpcProvider, JsonRpcSigner } from "@ethersproject/providers";
+import { constants, ethers } from "ethers";
+import { Chain, ClobClient, getContractConfig, OrderType, Side,UserOrder } from '@polymarket/clob-client';
+import {SignedOrder} from "@polymarket/order-utils";
 import { PolynanceApiError, PolynanceErrorCode } from './panic'; // Import from new error file
 import {
     PredictionProvider,
@@ -13,112 +15,27 @@ import {
     Exchange,
     SearchFilter,
     Trader,
-    TraderPosition
+    TraderPosition,
+    ExecuteOrderParams,
+    TradeUpdateHandlers,
+    TradeSubscription,
+    MarketMatchResult,
+    PolynanceClientOptions,
+    Candle
 } from './types';
 
-/**
- * Configuration options for the PolynanceClient.
- */
-export interface PolynanceClientOptions {
-    /**
-     * The base URL for the Polynance REST API.
-     * @default 'http://57.180.216.102:9000'
-     */
-    apiBaseUrl?: string;
-    /**
-     * (Optional) Redis URL - potentially for future caching features. Currently unused in client logic.
-     */
-    redisUrl?: string;
-    /**
-     * The base URL for the Polynance Server-Sent Events (SSE) endpoint.
-     * @default 'http://57.180.216.102:9000'
-     */
-    sseBaseUrl?: string;
-    /**
-     * Timeout for API requests in milliseconds.
-     * @default 100000 (100 seconds)
-     */
-    timeout?: number;
+const minimunAbi = {
+    "usdc": [
+      "function approve(address, uint256) returns (bool)",
+      "function allowance(address, address) view returns (uint256)",
+      "function balanceOf(address) view returns (uint256)"
+    ],
+    "ctf": [
+      "function setApprovalForAll(address, bool) returns (bool)",
+      "function isApprovedForAll(address, address) view returns (bool)",
+      "function balanceOf(address, uint256) view returns (uint256)"
+    ]
 }
-
-/**
- * Defines the handlers for Server-Sent Events (SSE) related to trade updates.
- * Note: onError now receives a PolynanceApiError.
- */
-export interface TradeUpdateHandlers {
-    /**
-     * Callback function executed when the SSE connection is successfully established.
-     * @param ev The native Event object.
-     */
-    onOpen?: (ev: Event) => void;
-
-    /**
-     * Callback function executed when a new message (a trade record) is received.
-     * The message data is pre-parsed into a `TradeRecord` object.
-     * @param data The parsed `TradeRecord` object for the received trade.
-     */
-    onMessage?: (data: TradeRecord) => void;
-
-    /**
-     * Callback function executed when an error occurs with the SSE connection or message processing.
-     * @param error The `PolynanceApiError` representing the error.
-     */
-    onError?: (error: PolynanceApiError) => void; // Changed to PolynanceApiError
-}
-
-/**
- * Represents an active SSE subscription for trade updates.
- */
-export interface TradeSubscription {
-    /**
-     * The underlying `EventSource` instance managing the connection.
-     * You might use this for advanced control or debugging.
-     */
-    eventSource: EventSource;
-
-    /**
-     * Closes the SSE connection and stops receiving further events.
-     * It's important to call this when the subscription is no longer needed
-     * to free up resources.
-     */
-    close: () => void;
-
-    /**
-     * Retrieves the most recently received `TradeRecord` object.
-     * Returns `null` if no message has been received yet.
-     * Useful for getting the latest state without waiting for the next message.
-     */
-    getLatestData: () => TradeRecord | null;
-}
-
-/**
- * Represents a search result item when retrieving markets by query.
- */
-export interface MarketMatchResult {
-    /** The prediction market that matched the search query. */
-    event: Market;
-    /** The cosine similarity score (typically 0.0 to 1.0) indicating the relevance of the market to the query. Higher is more relevant. */
-    cosineSimilarity: number;
-}
-
-/**
- * Represents a single candlestick data point.
- */
-export interface Candle {
-    /** Unix timestamp (seconds) representing the start time of the candle interval. */
-    time: number;
-    /** The opening price during the candle interval. */
-    open: number;
-    /** The highest price reached during the candle interval. */
-    high: number;
-    /** The lowest price reached during the candle interval. */
-    low: number;
-    /** The closing price at the end of the candle interval. */
-    close: number;
-    /** The total volume traded during the candle interval. */
-    volume: number;
-}
-
 
 // --- Polynance Client Class ---
 
@@ -129,7 +46,9 @@ export interface Candle {
 export class PolynanceClient {
     private apiClient: AxiosInstance;
     private sseBaseUrl: string;
-    public clobClient?: ClobClient;
+    private polymarketClob: ClobClient;
+    private wallet?: Wallet | JsonRpcSigner;
+    private walletAddress?: string;
 
     /**
      * Creates an instance of the PolynanceClient.
@@ -147,6 +66,15 @@ export class PolynanceClient {
                 'Content-Type': 'application/json',
             },
         });
+        this.wallet = options?.wallet;
+        if(this.wallet && this.wallet instanceof JsonRpcSigner) {
+            if(options?.walletAddress) {
+                this.walletAddress = options.walletAddress;
+            }else {
+                throw new Error("walletAddress is required when wallet is JsonRpcSigner");
+            }
+        }
+        this.polymarketClob = new ClobClient("https://clob.polymarket.com/", Chain.POLYGON)
 
         // Optional: Interceptors can also use handleError
         // this.apiClient.interceptors.response.use(response => response, error => {
@@ -154,17 +82,188 @@ export class PolynanceClient {
         // });
     }
 
-    public async initPolymarketClobClient(wallet: JsonRpcSigner|Wallet) {
-        const tmp = new ClobClient("https://clob.polymarket.com/", Chain.POLYGON, wallet)
-        const cred = await tmp.createOrDeriveApiKey()
-        this.clobClient = new ClobClient(
-            "https://clob.polymarket.com/", 
-            Chain.POLYGON, 
-            wallet,
-            cred
-        )
-        return this.clobClient;
+    private async initCreds(wallet: JsonRpcSigner|Wallet) {
+        try {
+            const clobClient = new ClobClient(
+                "https://clob.polymarket.com/", 
+                Chain.POLYGON, 
+                wallet
+            )
+            let creds = await clobClient.deriveApiKey();
+            if(!creds) {
+                console.log("[initCredsinitCreds] deriveApiKey failed, creating new api key");
+                creds = await clobClient.createApiKey();
+            }
+            console.log("[initCredsinitCreds] initCreds", creds);
+            this.polymarketClob = new ClobClient(
+                "https://clob.polymarket.com/", 
+                Chain.POLYGON, 
+                wallet,
+                creds
+            )
+        }catch(e) {
+            throw this.handleError(e, 'initCreds', {});
+        }
     }
+
+    public async buildOrder(params: ExecuteOrderParams, wallet?: JsonRpcSigner|Wallet) {
+        if(!this.polymarketClob.creds) {
+            const w = wallet||this.wallet;
+            if(!w) {
+                throw new Error("Wallet is required to execute order");
+            }
+            await this.initCreds(w)
+        }
+
+        const exchange =await (async () =>{
+            try{
+            const isSlug = params.marketIdOrSlug.includes("-");
+            if(isSlug) {
+                const exchange = await this.getExchangeBySlug(params.marketIdOrSlug)
+                return exchange[0]
+            } else {
+                return await this.getExchange("polymarket", params.marketIdOrSlug)
+            }}catch(e) {
+                console.log(e)
+                return null
+            }
+        })();
+
+        if(!exchange) {
+            throw new PolynanceApiError("Exchange not found", PolynanceErrorCode.NOT_FOUND, { methodName: 'executeOrder', context: { params } });
+        }
+
+        let uo={};
+
+        try {
+            const positionToken = exchange.position_tokens[params.positionIdOrName=="YES" ? 0 : 1];
+            const price = params.price ? params.price : Number(positionToken.price);
+            const size = params.size ? params.size : params.inOrOutAmount / price;
+            const userOrder: UserOrder = {
+                ...params,
+                tokenID: positionToken.token_id,
+                side: params.buyOrSell=="BUY" ? Side.BUY : Side.SELL,
+                price: price,
+                size: size,
+            }
+            uo = userOrder;
+
+            const signedOrder = await this.polymarketClob.createOrder(userOrder);
+            return signedOrder;
+        }catch(e) {
+            throw this.handleError(e, 'buildOrder', { userOrder: uo });
+        }
+    }
+
+    public async executeOrder(order: SignedOrder,rpcProvider?: JsonRpcProvider,wallet?: JsonRpcSigner|Wallet,orderType: OrderType=OrderType.GTC) {
+        try {
+            if(!wallet && !this.wallet) {
+                throw new Error("Wallet is required to approve allowance");
+            }
+            if(!this.wallet?.provider&&!rpcProvider) {
+                throw new Error("Wallet is required to execute order");
+            }
+            const provider = this.wallet?.provider ? this.wallet : rpcProvider;
+            if(!provider) throw new Error("Provider is required to execute order");
+            const balance = await this.approveAllowanceBalance(provider);
+            console.log("balance",balance);
+            console.log("pay",order.makerAmount);
+            return await this.polymarketClob.postOrder(order,orderType);
+        }catch(e) {
+            throw this.handleError(e, 'executeOrder', { order });
+        }
+    }
+
+    private async approveAllowanceBalance(
+        provider: JsonRpcProvider|Wallet|JsonRpcSigner,
+    ) {
+        try{
+
+            const contractConfig = getContractConfig(Chain.POLYGON);
+           
+            //TODO
+            const walletAddress = provider instanceof Wallet ? await provider.getAddress() : this.walletAddress;
+            const usdc = new ethers.Contract(contractConfig.collateral, minimunAbi["usdc"], provider);
+            const ctf = new ethers.Contract(contractConfig.conditionalTokens, minimunAbi["ctf"], provider);
+
+            const usdcAllowanceNegRiskAdapterPromise = usdc.allowance(
+                walletAddress,
+                contractConfig.negRiskAdapter,
+              );
+              
+              const usdcAllowanceNegRiskExchangePromise = usdc.allowance(
+                  walletAddress,
+                  contractConfig.negRiskExchange,
+              );
+              
+              const conditionalTokensAllowanceNegRiskExchangePromise = ctf.isApprovedForAll(
+                  walletAddress,
+                  contractConfig.negRiskExchange,
+              );
+              
+              const conditionalTokensAllowanceNegRiskAdapterPromise = ctf.isApprovedForAll(
+                  walletAddress,
+                  contractConfig.negRiskAdapter,
+              );
+
+              const usdcBalancePromise = usdc.balanceOf(walletAddress);
+              
+
+              const [
+                usdcAllowanceNegRiskAdapter,
+                usdcAllowanceNegRiskExchange,
+                conditionalTokensAllowanceNegRiskExchange,
+                conditionalTokensAllowanceNegRiskAdapter,
+                usdcBalance,
+              ] = await Promise.all([
+                usdcAllowanceNegRiskAdapterPromise,
+                usdcAllowanceNegRiskExchangePromise,
+                conditionalTokensAllowanceNegRiskExchangePromise,
+                conditionalTokensAllowanceNegRiskAdapterPromise,
+                usdcBalancePromise,
+              ]);
+
+
+              
+              let txn;
+              if (!usdcAllowanceNegRiskAdapter.gt(constants.Zero)) {
+                txn = await usdc.approve(contractConfig.negRiskAdapter, constants.MaxUint256, {
+                    gasPrice: 100_000_000_000,
+                    gasLimit: 200_000,
+                });
+                console.log(`[USDC->NegRiskAdapter]: ${txn.hash}`);
+              }
+              if (!usdcAllowanceNegRiskExchange.gt(constants.Zero)) {
+                  txn = await usdc.approve(contractConfig.negRiskExchange, constants.MaxUint256, {
+                      gasPrice: 100_000_000_000,
+                      gasLimit: 200_000,
+                  });
+                  console.log(`[USDC->NegRiskExchange]: ${txn.hash}`);
+              }
+              if (!conditionalTokensAllowanceNegRiskExchange) {
+                  txn = await ctf.setApprovalForAll(contractConfig.negRiskExchange, true, {
+                      gasPrice: 100_000_000_000,
+                      gasLimit: 200_000,
+                  });
+                  console.log(`[CTF->NegRiskExchange]: ${txn.hash}`);
+              }
+              if (!conditionalTokensAllowanceNegRiskAdapter) {
+                  txn = await ctf.setApprovalForAll(contractConfig.negRiskAdapter, true, {
+                      gasPrice: 100_000_000_000,
+                      gasLimit: 200_000,
+                  });
+                  console.log(`[CTF->NegRiskAdapter]: ${txn.hash}`);
+              }
+              console.log(txn ? txn.hash : "allowance already set")
+              return Number(usdcBalance.toString());
+        }catch(e) {
+            throw this.handleError(e, 'approveAllowance', {});
+        }
+    }
+
+
+
+    
 
     /**
      * Handles errors, logs them, and wraps them in a PolynanceApiError.
@@ -501,14 +600,35 @@ export class PolynanceClient {
                params: { slug }
            });
            // Optionally, check for 404 specifically if desired
-           // if (response.status === 404 || response.data.length === 0) {
-           //    throw new PolynanceApiError(`Market with slug '${slug}' not found.`, PolynanceErrorCode.NOT_FOUND, {methodName, context, statusCode: 404});
-           // }
+           if (response.status === 404 || response.data.length === 0) {
+              throw new PolynanceApiError(`Market with slug '${slug}' not found.`, PolynanceErrorCode.NOT_FOUND, {methodName, context, statusCode: 404});
+           }
            return response.data;
        } catch (error) {
            // If it was an Axios 404, handleError will set NOT_FOUND code
            throw this.handleError(error, methodName, context);
        }
+   }
+
+   async getExchangeBySlug(slug: string): Promise<Exchange[]> {
+       const methodName = 'getExchangeBySlug';
+       const context = { slug: slug ? '***' : slug }; // Mask potentially long slug
+        if (!slug) {
+             throw new PolynanceApiError("Missing required parameter 'slug'.", PolynanceErrorCode.INVALID_PARAMETER, { methodName, context });
+        }
+        try {
+            const response = await this.apiClient.get<Exchange[]>('/v1/agg/market', {
+                params: { slug }
+            });
+            // Optionally, check for 404 specifically if desired
+            if (response.status === 404 || response.data.length === 0) {
+               throw new PolynanceApiError(`Exchange with slug '${slug}' not found.`, PolynanceErrorCode.NOT_FOUND, {methodName, context, statusCode: 404});
+            }
+            return response.data;
+        } catch (error) {
+            // If it was an Axios 404, handleError will set NOT_FOUND code
+            throw this.handleError(error, methodName, context);
+        }
    }
 
    /**
@@ -541,7 +661,6 @@ export class PolynanceClient {
         }
     
     }
-
 
 
     /**

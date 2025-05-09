@@ -1,5 +1,5 @@
 
-export { PolynanceClient, PolynanceClientOptions } from './core/client';
+export { PolynanceClient } from './core/client';
 
 export {
   PredictionProvider,
@@ -8,9 +8,6 @@ export {
   MarketDiscussion,
   OrderBookSummary,
   OrderBookLevel,
+  PolynanceClientOptions
 } from './core/types';
-
-
-
-
 

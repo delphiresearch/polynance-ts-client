@@ -1,3 +1,6 @@
+import { PolynanceApiError } from "./panic";
+import { Wallet } from "@ethersproject/wallet";
+import { JsonRpcSigner } from "@ethersproject/providers";
 /**
  * Represents the supported prediction market protocols.
  */
@@ -241,3 +244,121 @@ export interface TraderBasic {
     collateralFlow:string;   // signed USDC flow
   }
   
+//----
+  export interface ExecuteOrderParams {
+    marketIdOrSlug: string,
+    positionIdOrName: "YES"|"NO", //
+    buyOrSell: "BUY" | "SELL",
+    inOrOutAmount: number,
+    size?: number,
+    price?: number,
+    feeRateBps?: number,
+    nonce?: number,
+    expiration?: number,
+    taker?: string
+}
+
+/**
+ * Configuration options for the PolynanceClient.
+ */
+export interface PolynanceClientOptions {
+  wallet?: Wallet | JsonRpcSigner;
+  walletAddress?: string;
+  /**
+   * The base URL for the Polynance REST API.
+   * @default 'http://57.180.216.102:9000'
+   */
+  apiBaseUrl?: string;
+  /**
+   * (Optional) Redis URL - potentially for future caching features. Currently unused in client logic.
+   */
+  redisUrl?: string;
+  /**
+   * The base URL for the Polynance Server-Sent Events (SSE) endpoint.
+   * @default 'http://57.180.216.102:9000'
+   */
+  sseBaseUrl?: string;
+  /**
+   * Timeout for API requests in milliseconds.
+   * @default 100000 (100 seconds)
+   */
+  timeout?: number;
+}
+
+/**
+* Defines the handlers for Server-Sent Events (SSE) related to trade updates.
+* Note: onError now receives a PolynanceApiError.
+*/
+export interface TradeUpdateHandlers {
+  /**
+   * Callback function executed when the SSE connection is successfully established.
+   * @param ev The native Event object.
+   */
+  onOpen?: (ev: Event) => void;
+
+  /**
+   * Callback function executed when a new message (a trade record) is received.
+   * The message data is pre-parsed into a `TradeRecord` object.
+   * @param data The parsed `TradeRecord` object for the received trade.
+   */
+  onMessage?: (data: TradeRecord) => void;
+
+  /**
+   * Callback function executed when an error occurs with the SSE connection or message processing.
+   * @param error The `PolynanceApiError` representing the error.
+   */
+  onError?: (error: PolynanceApiError) => void; // Changed to PolynanceApiError
+}
+
+/**
+* Represents an active SSE subscription for trade updates.
+*/
+export interface TradeSubscription {
+  /**
+   * The underlying `EventSource` instance managing the connection.
+   * You might use this for advanced control or debugging.
+   */
+  eventSource: EventSource;
+
+  /**
+   * Closes the SSE connection and stops receiving further events.
+   * It's important to call this when the subscription is no longer needed
+   * to free up resources.
+   */
+  close: () => void;
+
+  /**
+   * Retrieves the most recently received `TradeRecord` object.
+   * Returns `null` if no message has been received yet.
+   * Useful for getting the latest state without waiting for the next message.
+   */
+  getLatestData: () => TradeRecord | null;
+}
+
+/**
+* Represents a search result item when retrieving markets by query.
+*/
+export interface MarketMatchResult {
+  /** The prediction market that matched the search query. */
+  event: Market;
+  /** The cosine similarity score (typically 0.0 to 1.0) indicating the relevance of the market to the query. Higher is more relevant. */
+  cosineSimilarity: number;
+}
+
+/**
+* Represents a single candlestick data point.
+*/
+export interface Candle {
+  /** Unix timestamp (seconds) representing the start time of the candle interval. */
+  time: number;
+  /** The opening price during the candle interval. */
+  open: number;
+  /** The highest price reached during the candle interval. */
+  high: number;
+  /** The lowest price reached during the candle interval. */
+  low: number;
+  /** The closing price at the end of the candle interval. */
+  close: number;
+  /** The total volume traded during the candle interval. */
+  volume: number;
+}
