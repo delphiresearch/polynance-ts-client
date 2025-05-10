@@ -5,7 +5,7 @@ import { JsonRpcSigner } from "@ethersproject/providers";
  * Represents the supported prediction market protocols.
  */
 export type PredictionProvider = 'polymarket' | 'limitless' | 'truemarket';
-
+export type BinaryOption = 'YES' | 'NO';
 /**
  * Represents detailed information about a specific prediction market.
  */
@@ -247,15 +247,17 @@ export interface TraderBasic {
 //----
   export interface ExecuteOrderParams {
     marketIdOrSlug: string,
-    positionIdOrName: "YES"|"NO", //
+    positionIdOrName: BinaryOption, //
     buyOrSell: "BUY" | "SELL",
-    inOrOutAmount: number,
+    usdcFlowAbs: number,
+    positionQty?: number,
     size?: number,
     price?: number,
     feeRateBps?: number,
     nonce?: number,
     expiration?: number,
-    taker?: string
+    taker?: string,
+    provider: PredictionProvider
 }
 
 /**

@@ -90,7 +90,7 @@ export class PolynanceClient {
                 wallet
             )
             let creds = await clobClient.deriveApiKey();
-            if(!creds) {
+            if(!creds.key) {
                 console.log("[initCredsinitCreds] deriveApiKey failed, creating new api key");
                 creds = await clobClient.createApiKey();
             }
@@ -107,6 +107,11 @@ export class PolynanceClient {
     }
 
     public async buildOrder(params: ExecuteOrderParams, wallet?: JsonRpcSigner|Wallet) {
+
+        if(params.provider!=="polymarket") {
+            throw new Error("Now Only Polymarket is supported");
+        }
+
         if(!this.polymarketClob.creds) {
             const w = wallet||this.wallet;
             if(!w) {
@@ -115,7 +120,7 @@ export class PolynanceClient {
             await this.initCreds(w)
         }
 
-        const exchange =await (async () =>{
+        const exchange =await(async () =>{
             try{
             const isSlug = params.marketIdOrSlug.includes("-");
             if(isSlug) {
@@ -138,7 +143,10 @@ export class PolynanceClient {
         try {
             const positionToken = exchange.position_tokens[params.positionIdOrName=="YES" ? 0 : 1];
             const price = params.price ? params.price : Number(positionToken.price);
-            const size = params.size ? params.size : params.inOrOutAmount / price;
+            const size = params.size ? params.size :  params.usdcFlowAbs / price;
+            console.log("report of ctf tokenQty", params.buyOrSell=="BUY" ? size : -size);
+            console.log("usdcFlow", params.usdcFlowAbs);
+            console.log(`$1=${price};${price*size}==${params.usdcFlowAbs}`);
             const userOrder: UserOrder = {
                 ...params,
                 tokenID: positionToken.token_id,
@@ -167,7 +175,7 @@ export class PolynanceClient {
             if(!provider) throw new Error("Provider is required to execute order");
             const balance = await this.approveAllowanceBalance(provider);
             console.log("balance",balance);
-            console.log("pay",order.makerAmount);
+            console.log("pay", order.side==0 ? order.makerAmount : order.takerAmount);
             return await this.polymarketClob.postOrder(order,orderType);
         }catch(e) {
             throw this.handleError(e, 'executeOrder', { order });
@@ -255,6 +263,7 @@ export class PolynanceClient {
                   console.log(`[CTF->NegRiskAdapter]: ${txn.hash}`);
               }
               console.log(txn ? txn.hash : "allowance already set")
+              
               return Number(usdcBalance.toString());
         }catch(e) {
             throw this.handleError(e, 'approveAllowance', {});
