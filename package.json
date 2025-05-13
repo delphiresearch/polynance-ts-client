@@ -1,6 +1,6 @@
 {
   "name": "polynance_sdk",
-  "version": "1.0.1-beta.1.2",
+  "version": "1.0.1-beta.1.4",
   "description": "TypeScript SDK for prediction market aggregation supporting Polymarket, Limitless, and Truemarket",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

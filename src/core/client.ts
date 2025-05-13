@@ -3,7 +3,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { Wallet } from "@ethersproject/wallet";
 import { JsonRpcProvider, JsonRpcSigner } from "@ethersproject/providers";
 import { constants, ethers } from "ethers";
-import { Chain, ClobClient, getContractConfig, OrderType, Side,UserOrder } from '@polymarket/clob-client';
+import { Chain, ClobClient, getContractConfig, OpenOrder, OrderType, Side,UserOrder } from '@polymarket/clob-client';
 import {SignedOrder} from "@polymarket/order-utils";
 import { PolynanceApiError, PolynanceErrorCode } from './panic'; // Import from new error file
 import {
@@ -21,7 +21,8 @@ import {
     TradeSubscription,
     MarketMatchResult,
     PolynanceClientOptions,
-    Candle
+    Candle,
+    PolyOrder
 } from './types';
 
 const minimunAbi = {
@@ -43,12 +44,13 @@ const minimunAbi = {
  * The main client class for interacting with the Polynance API.
  * Provides methods to fetch prediction market data and subscribe to real-time events.
  */
-export class PolynanceClient {
+export class PolynanceSDK {
     private apiClient: AxiosInstance;
     private sseBaseUrl: string;
-    private polymarketClob: ClobClient;
+    public polymarketClob: ClobClient;
     private wallet?: Wallet | JsonRpcSigner;
     private walletAddress?: string;
+    private pendingOrderIds: string[] = [];
 
     /**
      * Creates an instance of the PolynanceClient.
@@ -135,35 +137,43 @@ export class PolynanceClient {
         })();
 
         if(!exchange) {
-            throw new PolynanceApiError("Exchange not found", PolynanceErrorCode.NOT_FOUND, { methodName: 'executeOrder', context: { params } });
+            throw this.handleError(new Error("Exchange not found"), 'buildOrder', { params });
         }
 
-        let uo={};
+        const uo = await(async ()=>{
+            try {
+                const positionToken = exchange.position_tokens[params.positionIdOrName=="YES" ? 0 : 1];
+                const price = params.price ? params.price : Number(positionToken.price);
+                const size = params.size ? params.size :  params.usdcFlowAbs / price;
+                console.log("report of ctf tokenQty", params.buyOrSell=="BUY" ? size : -size);
+                console.log("usdcFlow              ", params.usdcFlowAbs);
+                console.log(`                      $${price};${price*size}==${params.usdcFlowAbs}`);
+                const userOrder: UserOrder = {
+                    ...params,
+                    tokenID: positionToken.token_id,
+                    side: params.buyOrSell=="BUY" ? Side.BUY : Side.SELL,
+                    price: price,
+                    size: size,
+                }
+                return userOrder;
+            }catch(e) {
+               return null;
+            }
+        })();
+
+        if(!uo) {
+            throw this.handleError(new Error("UserOrder not found"), 'buildOrder', { params });
+        }
 
         try {
-            const positionToken = exchange.position_tokens[params.positionIdOrName=="YES" ? 0 : 1];
-            const price = params.price ? params.price : Number(positionToken.price);
-            const size = params.size ? params.size :  params.usdcFlowAbs / price;
-            console.log("report of ctf tokenQty", params.buyOrSell=="BUY" ? size : -size);
-            console.log("usdcFlow", params.usdcFlowAbs);
-            console.log(`$1=${price};${price*size}==${params.usdcFlowAbs}`);
-            const userOrder: UserOrder = {
-                ...params,
-                tokenID: positionToken.token_id,
-                side: params.buyOrSell=="BUY" ? Side.BUY : Side.SELL,
-                price: price,
-                size: size,
-            }
-            uo = userOrder;
-
-            const signedOrder = await this.polymarketClob.createOrder(userOrder);
+            const signedOrder = await this.polymarketClob.createOrder(uo);
             return signedOrder;
         }catch(e) {
             throw this.handleError(e, 'buildOrder', { userOrder: uo });
         }
     }
 
-    public async executeOrder(order: SignedOrder,rpcProvider?: JsonRpcProvider,wallet?: JsonRpcSigner|Wallet,orderType: OrderType=OrderType.GTC) {
+    public async executeOrder(order: SignedOrder,rpcProvider?: JsonRpcProvider,wallet?: JsonRpcSigner|Wallet,orderType: OrderType=OrderType.GTC): Promise<OpenOrder|any> {
         try {
             if(!wallet && !this.wallet) {
                 throw new Error("Wallet is required to approve allowance");
@@ -173,12 +183,32 @@ export class PolynanceClient {
             }
             const provider = this.wallet?.provider ? this.wallet : rpcProvider;
             if(!provider) throw new Error("Provider is required to execute order");
-            const balance = await this.approveAllowanceBalance(provider);
-            console.log("balance",balance);
-            console.log("pay", order.side==0 ? order.makerAmount : order.takerAmount);
-            return await this.polymarketClob.postOrder(order,orderType);
+            await this.approveAllowanceBalance(provider);
+            const res = await this.polymarketClob.postOrder(order,orderType);
+            if(res?.orderID) {
+                const op = await this.polymarketClob.getOrder(res.orderID);
+                if(op.status.toLowerCase() !== "matched") {
+                    this.pendingOrderIds.push(res.orderID);
+                }
+                return op;
+            }
+            await this.proposePrice(order);
+            return res;
         }catch(e) {
             throw this.handleError(e, 'executeOrder', { order });
+        }
+    }
+
+    public getPendingOrdersIds(): string[] {
+        return [...this.pendingOrderIds];
+    }
+
+    public async waitOrderMatched(orderId: string): Promise<boolean> {
+        try {
+            const op = await this.polymarketClob.getOrder(orderId);
+            return op.status.toLowerCase() === "matched";
+        }catch(e) {
+            return false;
         }
     }
 
@@ -215,6 +245,7 @@ export class PolynanceClient {
               );
 
               const usdcBalancePromise = usdc.balanceOf(walletAddress);
+
               
 
               const [
@@ -270,9 +301,76 @@ export class PolynanceClient {
         }
     }
 
+    public async getConditionalTokensBalance(tokenId: string,walletAddress?: string) {
+        const contractConfig = getContractConfig(Chain.POLYGON);
+        if(!this.wallet) {
+            throw new Error("Wallet is required to get balance");
+        }
+        const adder = walletAddress||this.walletAddress||this.wallet.getAddress();
+        const ctf = new ethers.Contract(contractConfig.conditionalTokens, minimunAbi["ctf"], this.wallet);
+        const balance = await ctf.balanceOf(adder, tokenId);
+        return Number(balance.toString());
+    }
+
+    public async getUSDCBalance(walletAddress?: string) {
+        const contractConfig = getContractConfig(Chain.POLYGON);
+        if(!this.wallet) {
+            throw new Error("Wallet is required to get balance");
+        }
+        const adder = walletAddress||this.walletAddress||this.wallet.getAddress();
+        const usdc = new ethers.Contract(contractConfig.collateral, minimunAbi["usdc"], this.wallet);
+        const balance = await usdc.balanceOf(adder);
+        return Number(balance.toString());
+    }
+
+    public async proposePrice(order: SignedOrder) {
+        try {
+            const polyOrder = this.toPolyOrder(order);
+            const res = await this.apiClient.post("/v1/proposePrice", {order: polyOrder});
+            return res;
+        }catch(e) {
+            throw this.handleError(e, 'proposePrice', { order });
+        }
+    }
+
+    public async verifyPrice() {
+        try {
+            await this.apiClient.post("/v1/verifyPrice");
+        }catch(e) {
+            throw this.handleError(e, 'feedPrice');
+        }
+    }
+
+    public async scanPendingPriceData() {
+        try {
+            const res = await this.apiClient.get<{result: boolean}>("/v1/scanPendingPriceData");
+            return res.data.result;
+        }catch(e) {
+            throw this.handleError(e, 'scanPendingPriceData');
+        }
+    }
 
 
-    
+
+    private toPolyOrder(o: SignedOrder): PolyOrder {
+        return {
+          salt:          o.salt,
+          maker:         o.maker,
+          signer:        o.signer,
+          taker:         o.taker,
+          tokenId:       o.tokenId,
+          makerAmount:   o.makerAmount,
+          takerAmount:   o.takerAmount,
+          expiration:    o.expiration,
+          nonce:         o.nonce,
+          feeRateBps:    o.feeRateBps.toString(),
+          side:          o.side.toString(),
+          signatureType: o.signatureType.toString(),
+          signature:     o.signature,
+        };
+      }
+      
+
 
     /**
      * Handles errors, logs them, and wraps them in a PolynanceApiError.
@@ -362,6 +460,46 @@ export class PolynanceClient {
             return apiError;
         }
     }
+
+    public asContext<T>(
+        data: T,
+        prompt?: string
+      ): string {
+        const indentSize = 2;
+        const prefix = prompt ? `\n${prompt}\n------\n` : "";
+        const pad = (lvl: number) => " ".repeat(lvl * indentSize);
+        const defaultFormatter = (path: string, value: unknown, level: number) =>
+          `${pad(level)}${path} : ${String(value)}`;
+    
+        const fmt = defaultFormatter;
+        const skipUndefined = true
+      
+        const walk = (value: unknown, path: string[], level: number, out: string[]) => {
+          if (value === null || typeof value !== "object") {
+            const line = fmt(path.join("."), value, level);
+            if (line !== null) out.push(line);
+            return;
+          }
+      
+          if (Array.isArray(value)) {
+            value.forEach((v, i) => walk(v, [...path, `[${i}]`], level, out));
+            return;
+          }
+          const keys = Object.keys(value as Record<string, unknown>);
+          keys.sort();
+      
+          for (const k of keys) {
+            const v = (value as Record<string, unknown>)[k];
+            if (v === undefined && skipUndefined) continue;
+            walk(v, [...path, k], level + 1, out);
+          }
+        };
+      
+        const lines: string[] = [];
+        walk(data, [], 0, lines);
+        return prefix + lines.join("\n");
+    }
+    
 
 
     /**
@@ -525,7 +663,7 @@ export class PolynanceClient {
         }
     }
 
-    async getTrader(protocol: PredictionProvider,traderAddress: string): Promise<Trader> {
+    public async getTrader(protocol: PredictionProvider,traderAddress: string): Promise<Trader> {
         const methodName = 'getTrader';
         const context = { protocol, traderAddress: traderAddress ? '***' : traderAddress }; // Mask potentially long address
         if (!traderAddress) {
@@ -544,7 +682,7 @@ export class PolynanceClient {
         }
     }
 
-    async traderPositions(protocol: PredictionProvider,traderAddress: string): Promise<TraderPosition[]> {
+    public async traderPositions(protocol: PredictionProvider,traderAddress: string): Promise<TraderPosition[]> {
         const methodName = 'traderPositions';
         const context = { protocol, traderAddress: traderAddress ? '***' : traderAddress }; // Mask potentially long address
         if (!traderAddress) {
@@ -668,6 +806,44 @@ export class PolynanceClient {
         } catch (error) {
             throw this.handleError(error, methodName, context);
         }
+
+        function asContext<T>(
+    data: T
+  ): string {
+    const indentSize = 2;
+    const pad = (lvl: number) => " ".repeat(lvl * indentSize);
+    const defaultFormatter = (path: string, value: unknown, level: number) =>
+      `${pad(level)}${path} : ${String(value)}`;
+
+    const fmt = defaultFormatter;
+    const skipUndefined = true
+  
+    const walk = (value: unknown, path: string[], level: number, out: string[]) => {
+      if (value === null || typeof value !== "object") {
+        const line = fmt(path.join("."), value, level);
+        if (line !== null) out.push(line);
+        return;
+      }
+  
+      if (Array.isArray(value)) {
+        value.forEach((v, i) => walk(v, [...path, `[${i}]`], level, out));
+        return;
+      }
+      const keys = Object.keys(value as Record<string, unknown>);
+      keys.sort();
+  
+      for (const k of keys) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v === undefined && skipUndefined) continue;
+        walk(v, [...path, k], level + 1, out);
+      }
+    };
+  
+    const lines: string[] = [];
+    walk(data, [], 0, lines);
+    return lines.join("\n");
+}
+
     
     }
 

@@ -1,3 +1,3 @@
 
-export { PolynanceClient } from './core/client';
+export { PolynanceSDK } from './core/client';
 export * from './core/types';

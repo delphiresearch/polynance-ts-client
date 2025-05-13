@@ -1,6 +1,7 @@
 import { PolynanceApiError } from "./panic";
 import { Wallet } from "@ethersproject/wallet";
 import { JsonRpcSigner } from "@ethersproject/providers";
+import { BigNumber } from "ethers";
 /**
  * Represents the supported prediction market protocols.
  */
@@ -363,4 +364,21 @@ export interface Candle {
   close: number;
   /** The total volume traded during the candle interval. */
   volume: number;
+}
+
+
+export interface PolyOrder {
+  salt: string;
+  maker: string;
+  signer: string;
+  taker: string;
+  tokenId: string;
+  makerAmount: string;
+  takerAmount: string;
+  expiration: string;
+  nonce: string;
+  feeRateBps: string;
+  side: string;
+  signatureType: string;
+  signature: string; // packed 0x[r(32)+s(32)+v(1)]
 }
