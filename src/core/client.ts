@@ -57,8 +57,8 @@ export class PolynanceSDK {
      * @param options - Optional configuration for the client, such as API URLs and timeout.
      */
     constructor(options?: PolynanceClientOptions) {
-        const apiBaseUrl = options?.apiBaseUrl || 'http://57.180.216.102:9000';
-        this.sseBaseUrl = options?.sseBaseUrl || 'http://57.180.216.102:9000'; // Default SSE URL
+        const apiBaseUrl = options?.apiBaseUrl || 'https://api.polynance.ag';
+        this.sseBaseUrl = options?.sseBaseUrl || 'https://api.polynance.ag'; // Default SSE URL
         const timeout = options?.timeout || 100000; // Default timeout 100s
 
         this.apiClient = axios.create({
@@ -84,7 +84,7 @@ export class PolynanceSDK {
         // });
     }
 
-    private async initCreds(wallet: JsonRpcSigner|Wallet) {
+    public async initCreds(wallet: JsonRpcSigner|Wallet) {
         try {
             const clobClient = new ClobClient(
                 "https://clob.polymarket.com/", 
@@ -142,7 +142,10 @@ export class PolynanceSDK {
 
         const uo = await(async ()=>{
             try {
-                const positionToken = exchange.position_tokens[params.positionIdOrName=="YES" ? 0 : 1];
+                const positionToken = exchange.position_tokens.find((pt)=>pt.name.toLowerCase()==params.positionIdOrName.toLowerCase());
+                if(!positionToken) {
+                    throw new Error("Position token not found");
+                }
                 const price = params.price ? params.price : Number(positionToken.price);
                 const size = params.size ? params.size :  params.usdcFlowAbs / price;
                 console.log("report of ctf tokenQty", params.buyOrSell=="BUY" ? size : -size);
@@ -173,7 +176,7 @@ export class PolynanceSDK {
         }
     }
 
-    public async executeOrder(order: SignedOrder,rpcProvider?: JsonRpcProvider,wallet?: JsonRpcSigner|Wallet,orderType: OrderType=OrderType.GTC): Promise<OpenOrder|any> {
+    public async executeOrder(order: SignedOrder,orderType: OrderType=OrderType.GTC,rpcProvider?: JsonRpcProvider,wallet?: JsonRpcSigner|Wallet): Promise<OpenOrder|any> {
         try {
             if(!wallet && !this.wallet) {
                 throw new Error("Wallet is required to approve allowance");
@@ -192,10 +195,11 @@ export class PolynanceSDK {
                 }
                 return op;
             }
-            await this.proposePrice(order);
+            this.proposePrice(order);
             return res;
         }catch(e) {
-            throw this.handleError(e, 'executeOrder', { order });
+            this.handleError(e, 'executeOrder', { order });
+            return null;
         }
     }
 
@@ -261,8 +265,6 @@ export class PolynanceSDK {
                 conditionalTokensAllowanceNegRiskAdapterPromise,
                 usdcBalancePromise,
               ]);
-
-
               
               let txn;
               if (!usdcAllowanceNegRiskAdapter.gt(constants.Zero)) {
@@ -329,7 +331,7 @@ export class PolynanceSDK {
             const res = await this.apiClient.post("/v1/proposePrice", {order: polyOrder});
             return res;
         }catch(e) {
-            throw this.handleError(e, 'proposePrice', { order });
+            return null;
         }
     }
 
@@ -337,7 +339,7 @@ export class PolynanceSDK {
         try {
             await this.apiClient.post("/v1/verifyPrice");
         }catch(e) {
-            throw this.handleError(e, 'feedPrice');
+            return null;
         }
     }
 
@@ -346,7 +348,8 @@ export class PolynanceSDK {
             const res = await this.apiClient.get<{result: boolean}>("/v1/scanPendingPriceData");
             return res.data.result;
         }catch(e) {
-            throw this.handleError(e, 'scanPendingPriceData');
+            this.handleError(e, 'scanPendingPriceData');
+            return false;
         }
     }
 
